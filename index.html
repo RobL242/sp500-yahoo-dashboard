@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Top 10 S&P 500 - Yahoo Finance</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Inter", "Segoe UI", Arial, sans-serif;
+        background: #000;
+        color: #f3f3f3;
+      }
+
+      .container {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 24px 16px 40px;
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: 1.6rem;
+        letter-spacing: 0.02em;
+      }
+
+      .subhead {
+        margin: 0 0 20px;
+        color: #aaa;
+        font-size: 0.95rem;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
+      .timestamp {
+        color: #bcbcbc;
+        font-size: 0.9rem;
+      }
+
+      button {
+        border: 1px solid #2f2f2f;
+        background: #111;
+        color: #f3f3f3;
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: #1c1c1c;
+      }
+
+      .table-wrap {
+        border: 1px solid #252525;
+        border-radius: 12px;
+        overflow: hidden;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      thead th {
+        background: #080808;
+        color: #cfcfcf;
+        text-align: left;
+        font-size: 0.88rem;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        padding: 12px 14px;
+      }
+
+      tbody td {
+        padding: 14px;
+        border-top: 1px solid #161616;
+        font-size: 1.05rem;
+      }
+
+      tbody tr:hover {
+        background: #0b0b0b;
+      }
+
+      .ticker {
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+
+      .price {
+        font-variant-numeric: tabular-nums;
+      }
+
+      .change {
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .change.up {
+        color: #30d158;
+      }
+
+      .change.down {
+        color: #ff453a;
+      }
+
+      .change.flat {
+        color: #bfbfbf;
+      }
+
+      .status {
+        margin-top: 12px;
+        color: #aaa;
+        font-size: 0.9rem;
+        min-height: 1.2em;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <h1>Top 10 S&amp;P 500 Stocks</h1>
+      <p class="subhead">Live quote data from Yahoo Finance</p>
+
+      <div class="toolbar">
+        <div class="timestamp" id="timestamp">Loading...</div>
+        <button id="refresh-btn" type="button">Refresh</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Ticker</th>
+              <th>Latest Price</th>
+              <th>% Change (Day)</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+
+      <div class="status" id="status"></div>
+    </main>
+
+    <script>
+      // Top 10 S&P 500 names by market cap (commonly used watchlist set).
+      const top10Symbols = [
+        "AAPL",
+        "MSFT",
+        "NVDA",
+        "AMZN",
+        "GOOGL",
+        "META",
+        "BRK-B",
+        "AVGO",
+        "TSLA",
+        "LLY"
+      ];
+
+      const rowsEl = document.getElementById("rows");
+      const statusEl = document.getElementById("status");
+      const tsEl = document.getElementById("timestamp");
+      const refreshBtn = document.getElementById("refresh-btn");
+
+      function fmtPrice(value) {
+        return Number(value).toLocaleString("en-US", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        });
+      }
+
+      function fmtPct(value) {
+        const sign = value > 0 ? "+" : "";
+        return `${sign}${value.toFixed(2)}%`;
+      }
+
+      function getPctChange(last, prevClose) {
+        if (!Number.isFinite(last) || !Number.isFinite(prevClose) || prevClose === 0) {
+          return 0;
+        }
+        return ((last - prevClose) / prevClose) * 100;
+      }
+
+      function rowHtml(item) {
+        const cls = item.pctChange > 0 ? "up" : item.pctChange < 0 ? "down" : "flat";
+        return `
+          <tr>
+            <td class="ticker">${item.symbol}</td>
+            <td class="price">$${fmtPrice(item.lastPrice)}</td>
+            <td class="change ${cls}">${fmtPct(item.pctChange)}</td>
+          </tr>
+        `;
+      }
+
+      async function loadData() {
+        statusEl.textContent = "Loading quotes...";
+        const symbolsParam = encodeURIComponent(top10Symbols.join(","));
+        const url = `/api/stocks?symbols=${symbolsParam}`;
+
+        const resp = await fetch(url, { cache: "no-store" });
+        if (!resp.ok) {
+          throw new Error(`API request failed (${resp.status})`);
+        }
+
+        const payload = await resp.json();
+        const entries = payload?.result ?? [];
+
+        const data = entries
+          .map((entry) => {
+            const symbol = entry?.symbol;
+            const lastPrice = Number(entry?.regularMarketPrice);
+            const prevClose = Number(entry?.chartPreviousClose ?? entry?.previousClose);
+            if (!symbol || !Number.isFinite(lastPrice) || !Number.isFinite(prevClose)) {
+              return null;
+            }
+            return {
+              symbol,
+              lastPrice,
+              pctChange: getPctChange(lastPrice, prevClose)
+            };
+          })
+          .filter(Boolean);
+
+        rowsEl.innerHTML = data.map(rowHtml).join("");
+        tsEl.textContent = `Last update: ${new Date().toLocaleString()}`;
+        statusEl.textContent = `Showing ${data.length} stocks. Auto-refresh every 60 seconds.`;
+      }
+
+      async function refresh() {
+        refreshBtn.disabled = true;
+        try {
+          await loadData();
+        } catch (err) {
+          statusEl.textContent = `Error: ${err.message}`;
+        } finally {
+          refreshBtn.disabled = false;
+        }
+      }
+
+      refreshBtn.addEventListener("click", refresh);
+      refresh();
+      setInterval(refresh, 60000);
+    </script>
+  </body>
+</html>
