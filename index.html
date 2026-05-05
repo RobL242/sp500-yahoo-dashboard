@@ -3,10 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Top 10 S&P 500 - Yahoo Finance</title>
+    <title>S&amp;P 500 movers — Yahoo Finance</title>
     <style>
       :root {
         color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
       }
 
       body {
@@ -14,46 +18,138 @@
         font-family: "Inter", "Segoe UI", Arial, sans-serif;
         background: #000;
         color: #f3f3f3;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      body.detail-open {
+        overflow: hidden;
       }
 
       .container {
-        max-width: 760px;
+        max-width: 900px;
         margin: 0 auto;
-        padding: 24px 16px 40px;
+        padding: 20px 14px 48px;
+      }
+
+      @media (min-width: 640px) {
+        .container {
+          padding: 24px 20px 56px;
+        }
       }
 
       h1 {
-        margin: 0 0 8px;
-        font-size: 1.6rem;
+        margin: 0 0 18px;
+        font-size: clamp(1.25rem, 4vw, 1.6rem);
         letter-spacing: 0.02em;
-      }
-
-      .subhead {
-        margin: 0 0 20px;
-        color: #aaa;
-        font-size: 0.95rem;
+        line-height: 1.2;
       }
 
       .toolbar {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        margin-bottom: 14px;
+        margin-bottom: 10px;
+      }
+
+      .mode-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        width: 100%;
+      }
+
+      @media (min-width: 640px) {
+        .mode-group {
+          width: auto;
+        }
+      }
+
+      .mode-group button {
+        flex: 1;
+        min-height: 44px;
+      }
+
+      @media (min-width: 640px) {
+        .mode-group button {
+          flex: 0 0 auto;
+          min-height: auto;
+        }
+      }
+
+      .watchlist-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        margin-bottom: 12px;
+        padding: 10px 0;
+      }
+
+      .watchlist-bar.hidden {
+        display: none;
+      }
+
+      .watchlist-bar input {
+        flex: 1 1 120px;
+        min-width: 100px;
+        max-width: 200px;
+        padding: 9px 10px;
+        border-radius: 6px;
+        border: 1px solid #333;
+        background: #111;
+        color: #eee;
+        font-size: 0.9rem;
+      }
+
+      .watchlist-bar .wl-hint {
+        font-size: 0.78rem;
+        color: #777;
+        width: 100%;
+      }
+
+      @media (min-width: 480px) {
+        .watchlist-bar .wl-hint {
+          width: auto;
+        }
       }
 
       .timestamp {
         color: #bcbcbc;
-        font-size: 0.9rem;
+        font-size: 0.85rem;
+        width: 100%;
+      }
+
+      @media (min-width: 640px) {
+        .timestamp {
+          width: auto;
+        }
+      }
+
+      .row-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        justify-content: flex-end;
+      }
+
+      @media (min-width: 640px) {
+        .row-actions {
+          width: auto;
+        }
       }
 
       button {
         border: 1px solid #2f2f2f;
         background: #111;
         color: #f3f3f3;
-        padding: 8px 12px;
+        padding: 10px 14px;
         border-radius: 8px;
         font-weight: 600;
+        font-size: 0.9rem;
         cursor: pointer;
       }
 
@@ -61,14 +157,28 @@
         background: #1c1c1c;
       }
 
-      .table-wrap {
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      button.mode-active {
+        border-color: #444;
+        background: #1a1a1a;
+        color: #fff;
+      }
+
+      .table-scroll {
         border: 1px solid #252525;
         border-radius: 12px;
-        overflow: hidden;
+        overflow-x: auto;
+        overflow-y: visible;
+        -webkit-overflow-scrolling: touch;
       }
 
       table {
         width: 100%;
+        min-width: 580px;
         border-collapse: collapse;
       }
 
@@ -76,25 +186,129 @@
         background: #080808;
         color: #cfcfcf;
         text-align: left;
-        font-size: 0.88rem;
-        letter-spacing: 0.03em;
+        font-size: 0.75rem;
+        letter-spacing: 0.04em;
         text-transform: uppercase;
-        padding: 12px 14px;
+        padding: 10px 12px;
+        white-space: nowrap;
+        user-select: none;
+      }
+
+      thead th.sortable {
+        cursor: pointer;
+      }
+
+      thead th.sortable:hover {
+        color: #fff;
+      }
+
+      thead th .sort-ind {
+        opacity: 0.45;
+        font-weight: 400;
+        margin-left: 4px;
+      }
+
+      thead th.sorted .sort-ind {
+        opacity: 1;
+        color: #8e8e8e;
       }
 
       tbody td {
-        padding: 14px;
+        padding: 10px 12px;
         border-top: 1px solid #161616;
-        font-size: 1.05rem;
+        font-size: 0.98rem;
+        vertical-align: middle;
       }
 
-      tbody tr:hover {
-        background: #0b0b0b;
+      tbody tr.tr-clickable {
+        cursor: pointer;
+        transition: background-color 0.12s ease;
       }
 
-      .ticker {
+      tbody tr.tr-clickable:hover td {
+        background-color: #181818;
+      }
+
+      tr.tr--benchmark td {
+        background: #0d0d0d;
+        border-top: 1px solid #2a2a2a;
+        transition: background-color 0.12s ease;
+      }
+
+      tr.tr--benchmark.tr-clickable:hover td {
+        background-color: #1e1e1e;
+      }
+
+      .empty-cell {
+        text-align: center;
+        color: #888;
+        padding: 28px 16px;
+      }
+
+      .td-ticker {
+        max-width: 52vw;
+      }
+
+      @media (min-width: 640px) {
+        .td-ticker {
+          max-width: 320px;
+        }
+      }
+
+      .sym {
         font-weight: 700;
         letter-spacing: 0.02em;
+      }
+
+      .co-name {
+        color: #a0a0a0;
+        font-weight: 400;
+        font-size: 0.86rem;
+        line-height: 1.3;
+      }
+
+      .td-spark {
+        width: 112px;
+        text-align: right;
+      }
+
+      thead th.td-spark {
+        text-align: right;
+      }
+
+      .spark {
+        display: block;
+        vertical-align: middle;
+        margin-left: auto;
+      }
+
+      .spark-empty {
+        color: #666;
+        font-size: 0.85rem;
+      }
+
+      .wl-remove {
+        margin-left: 8px;
+        padding: 2px 8px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        line-height: 1.2;
+        vertical-align: middle;
+      }
+
+      .bench-pill {
+        display: inline-block;
+        margin-left: 6px;
+        font-size: 0.65rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #888;
+        border: 1px solid #333;
+        padding: 2px 6px;
+        border-radius: 4px;
+        vertical-align: middle;
+        white-space: nowrap;
       }
 
       .price {
@@ -121,28 +335,224 @@
       .status {
         margin-top: 12px;
         color: #aaa;
+        font-size: 0.88rem;
+        min-height: 1.3em;
+        line-height: 1.4;
+      }
+
+      .detail-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        z-index: 1000;
+        display: none;
+      }
+
+      .detail-backdrop.open {
+        display: block;
+      }
+
+      .detail-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        width: 100%;
+        max-width: 420px;
+        height: 100%;
+        background: #0a0a0a;
+        border-left: 1px solid #2a2a2a;
+        z-index: 1001;
+        display: none;
+        flex-direction: column;
+        overflow: auto;
+      }
+
+      .detail-panel.open {
+        display: flex;
+      }
+
+      .detail-head {
+        padding: 16px;
+        border-bottom: 1px solid #222;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .detail-head h2 {
+        margin: 0;
+        font-size: 1.15rem;
+        font-weight: 700;
+      }
+
+      .detail-meta-line {
+        margin-top: 6px;
+        font-size: 0.8rem;
+        color: #888;
+      }
+
+      .detail-close {
+        flex-shrink: 0;
+        padding: 6px 12px;
+        font-size: 0.85rem;
+      }
+
+      .detail-ranges {
+        display: flex;
+        gap: 6px;
+        padding: 12px 16px;
+        flex-wrap: wrap;
+        border-bottom: 1px solid #1a1a1a;
+      }
+
+      .detail-ranges button {
+        padding: 6px 12px;
+        font-size: 0.82rem;
+      }
+
+      .detail-ranges button.range-active {
+        border-color: #555;
+        background: #1f1f1f;
+      }
+
+      .detail-chart-wrap {
+        padding: 12px 16px 20px;
+        flex: 1;
+      }
+
+      .detail-chart-wrap svg {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .detail-stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px 16px;
+        padding: 0 16px 16px;
+        font-size: 0.82rem;
+        color: #aaa;
+      }
+
+      .detail-stats span.val {
+        color: #e8e8e8;
+        font-weight: 600;
+      }
+
+      .detail-loading {
+        padding: 24px 16px;
+        color: #888;
         font-size: 0.9rem;
-        min-height: 1.2em;
+      }
+
+      .detail-err {
+        padding: 16px;
+        color: #ff6b6b;
+        font-size: 0.88rem;
+      }
+
+      @media (max-width: 639px) {
+        table {
+          min-width: 480px;
+        }
+
+        thead th,
+        tbody td {
+          padding-left: 10px;
+          padding-right: 10px;
+        }
+
+        .bench-pill {
+          display: block;
+          margin: 8px 0 0;
+          width: fit-content;
+        }
+
+        .detail-panel {
+          max-width: none;
+        }
       }
     </style>
   </head>
   <body>
+    <div id="detail-backdrop" class="detail-backdrop" aria-hidden="true"></div>
+    <aside
+      id="detail-panel"
+      class="detail-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="detail-title"
+    >
+      <div class="detail-head">
+        <div>
+          <h2 id="detail-title">—</h2>
+          <div id="detail-sub" class="detail-meta-line"></div>
+        </div>
+        <button type="button" class="detail-close" id="detail-close">Close</button>
+      </div>
+      <div class="detail-ranges" role="tablist" aria-label="Chart range">
+        <button type="button" id="range-1d" data-range="1d">1D</button>
+        <button type="button" id="range-5d" class="range-active" data-range="5d">5D</button>
+        <button type="button" id="range-1mo" data-range="1mo">1M</button>
+      </div>
+      <div id="detail-body" class="detail-chart-wrap">
+        <div id="detail-loading" class="detail-loading">Loading chart…</div>
+        <div id="detail-err" class="detail-err" hidden></div>
+        <svg id="detail-svg" viewBox="0 0 360 200" width="360" height="200" hidden></svg>
+      </div>
+      <div id="detail-stats" class="detail-stats"></div>
+    </aside>
+
     <main class="container">
-      <h1>Top 10 S&amp;P 500 Stocks</h1>
-      <p class="subhead">Live quote data from Yahoo Finance</p>
+      <h1>S&amp;P 500 movers</h1>
 
       <div class="toolbar">
-        <div class="timestamp" id="timestamp">Loading...</div>
-        <button id="refresh-btn" type="button">Refresh</button>
+        <div class="mode-group" role="group" aria-label="View mode">
+          <button type="button" id="mode-gainers" class="mode-active" aria-pressed="true">
+            Top 10 gainers
+          </button>
+          <button type="button" id="mode-losers" aria-pressed="false">
+            Top 10 losers
+          </button>
+          <button type="button" id="mode-watchlist" aria-pressed="false">
+            Watchlist
+          </button>
+        </div>
+        <div class="row-actions">
+          <span class="timestamp" id="timestamp">Loading…</span>
+          <button id="refresh-btn" type="button">Refresh</button>
+        </div>
       </div>
 
-      <div class="table-wrap">
+      <div id="watchlist-bar" class="watchlist-bar hidden">
+        <input
+          type="text"
+          id="wl-input"
+          maxlength="16"
+          placeholder="Symbol e.g. AAPL"
+          autocomplete="off"
+          aria-label="Ticker symbol to add"
+        />
+        <button type="button" id="wl-add">Add</button>
+        <span class="wl-hint">Max 10 symbols · saved only in this browser</span>
+      </div>
+
+      <div class="table-scroll">
         <table>
           <thead>
             <tr>
-              <th>Ticker</th>
-              <th>Latest Price</th>
-              <th>% Change (Day)</th>
+              <th class="sortable" scope="col" data-sort-key="symbol" aria-sort="none">
+                Ticker<span class="sort-ind" aria-hidden="true"></span>
+              </th>
+              <th class="sortable" scope="col" data-sort-key="price" aria-sort="none">
+                Price<span class="sort-ind" aria-hidden="true"></span>
+              </th>
+              <th class="sortable" scope="col" data-sort-key="pct" aria-sort="none">
+                % Day<span class="sort-ind" aria-hidden="true"></span>
+              </th>
+              <th class="td-spark" scope="col">1D</th>
             </tr>
           </thead>
           <tbody id="rows"></tbody>
@@ -153,24 +563,66 @@
     </main>
 
     <script>
-      // Top 10 S&P 500 names by market cap (commonly used watchlist set).
-      const top10Symbols = [
-        "AAPL",
-        "MSFT",
-        "NVDA",
-        "AMZN",
-        "GOOGL",
-        "META",
-        "BRK-B",
-        "AVGO",
-        "TSLA",
-        "LLY"
-      ];
+      const WATCHLIST_KEY = "sp500dash.watchlist.v1";
+      const MAX_WATCHLIST = 10;
 
       const rowsEl = document.getElementById("rows");
       const statusEl = document.getElementById("status");
       const tsEl = document.getElementById("timestamp");
       const refreshBtn = document.getElementById("refresh-btn");
+      const btnGainers = document.getElementById("mode-gainers");
+      const btnLosers = document.getElementById("mode-losers");
+      const btnWatchlist = document.getElementById("mode-watchlist");
+      const watchlistBar = document.getElementById("watchlist-bar");
+      const wlInput = document.getElementById("wl-input");
+      const wlAdd = document.getElementById("wl-add");
+      const sortHeaders = document.querySelectorAll("th.sortable");
+
+      const detailBackdrop = document.getElementById("detail-backdrop");
+      const detailPanel = document.getElementById("detail-panel");
+      const detailTitle = document.getElementById("detail-title");
+      const detailSub = document.getElementById("detail-sub");
+      const detailClose = document.getElementById("detail-close");
+      const detailLoading = document.getElementById("detail-loading");
+      const detailErr = document.getElementById("detail-err");
+      const detailSvg = document.getElementById("detail-svg");
+      const detailStats = document.getElementById("detail-stats");
+
+      let mode = "gainers";
+      let benchmarkRow = null;
+      let leaders = [];
+      /** @type {{ key: string, dir: 'asc'|'desc' } | null} */
+      let sortState = null;
+
+      const leaderboardCache = {
+        gainers: null,
+        losers: null
+      };
+
+      let detailSymbol = "";
+      let detailRange = "5d";
+
+      function normalizeSymbol(raw) {
+        return String(raw || "")
+          .trim()
+          .toUpperCase()
+          .replace(/\./g, "-");
+      }
+
+      function loadWatchlistSymbols() {
+        try {
+          const raw = localStorage.getItem(WATCHLIST_KEY);
+          const arr = raw ? JSON.parse(raw) : [];
+          if (!Array.isArray(arr)) return [];
+          return [...new Set(arr.map(normalizeSymbol).filter(Boolean))].slice(0, MAX_WATCHLIST);
+        } catch {
+          return [];
+        }
+      }
+
+      function saveWatchlistSymbols(syms) {
+        localStorage.setItem(WATCHLIST_KEY, JSON.stringify(syms.slice(0, MAX_WATCHLIST)));
+      }
 
       function fmtPrice(value) {
         return Number(value).toLocaleString("en-US", {
@@ -181,65 +633,280 @@
 
       function fmtPct(value) {
         const sign = value > 0 ? "+" : "";
-        return `${sign}${value.toFixed(2)}%`;
+        return `${sign}${Number(value).toFixed(2)}%`;
       }
 
       function getPctChange(last, prevClose) {
-        if (!Number.isFinite(last) || !Number.isFinite(prevClose) || prevClose === 0) {
-          return 0;
-        }
-        return ((last - prevClose) / prevClose) * 100;
+        const lastF = Number(last);
+        const prevF = Number(prevClose);
+        if (!Number.isFinite(lastF) || !Number.isFinite(prevF) || prevF === 0) return 0;
+        return ((lastF - prevF) / prevF) * 100;
       }
 
-      function rowHtml(item) {
-        const cls = item.pctChange > 0 ? "up" : item.pctChange < 0 ? "down" : "flat";
+      function changeClass(pct) {
+        if (pct > 0) return "up";
+        if (pct < 0) return "down";
+        return "flat";
+      }
+
+      function escapeHtml(s) {
+        if (s == null || s === undefined) return "";
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+
+      function sessionLabelText(sess) {
+        const lab = sess && sess.sessionLabel;
+        const map = {
+          regular: "Regular session",
+          pre: "Pre-market",
+          post: "After hours",
+          closed: "Closed",
+          unknown: "Session unknown"
+        };
+        return map[lab] || map.unknown;
+      }
+
+      function formatQuoteTime(sess) {
+        const t = sess && sess.regularMarketTime;
+        if (t == null || t === "") return "";
+        const sec = typeof t === "number" ? t : parseInt(String(t), 10);
+        if (!Number.isFinite(sec)) return "";
+        try {
+          return new Date(sec * 1000).toLocaleString();
+        } catch {
+          return "";
+        }
+      }
+
+      function tickerCellHtml(item, isBenchmark) {
+        const sym = escapeHtml(item.symbol || "");
+        const rawName = (item.shortName || "").trim();
+        const name = rawName ? escapeHtml(rawName) : "";
+        const namePart = name ? `<span class="co-name"> ${name}</span>` : "";
+        const pill = isBenchmark
+          ? '<span class="bench-pill">Benchmark</span>'
+          : "";
+        return `<span class="sym">${sym}</span>${namePart}${pill ? " " + pill : ""}`;
+      }
+
+      function sparkSvg(points, w, h, pct) {
+        if (!points || points.length < 2) {
+          return '<span class="spark-empty">—</span>';
+        }
+        const min = Math.min(...points);
+        const max = Math.max(...points);
+        const pad = 2;
+        const range = max - min || 1;
+        const stroke =
+          pct > 0 ? "#30d158" : pct < 0 ? "#ff453a" : "#888888";
+        const n = points.length;
+        const pts = points
+          .map((y, i) => {
+            const x = pad + (i / (n - 1)) * (w - 2 * pad);
+            const py = pad + (1 - (y - min) / range) * (h - 2 * pad);
+            return `${x.toFixed(1)},${py.toFixed(1)}`;
+          })
+          .join(" ");
+        return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline fill="none" stroke="${stroke}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" points="${pts}" /></svg>`;
+      }
+
+      function sortedLeaders() {
+        const base = leaders.map((r) => ({ ...r }));
+        if (!sortState) return base;
+        const mult = sortState.dir === "asc" ? 1 : -1;
+        const key = sortState.key;
+        base.sort((a, b) => {
+          let va;
+          let vb;
+          if (key === "symbol") {
+            va = a.symbol;
+            vb = b.symbol;
+            return mult * va.localeCompare(vb);
+          }
+          if (key === "price") {
+            va = Number(a.regularMarketPrice);
+            vb = Number(b.regularMarketPrice);
+          } else {
+            va = Number(a.pctChange);
+            vb = Number(b.pctChange);
+          }
+          if (va === vb) return 0;
+          return va < vb ? -mult : mult;
+        });
+        return base;
+      }
+
+      function renderRow(item, { isBenchmark }) {
+        const pct = Number(item.pctChange);
+        const cls = changeClass(pct);
+        const trClass = `${isBenchmark ? "tr--benchmark " : ""}tr-clickable`.trim();
+        const rawSym = String(item.symbol || "").trim();
+        const sym = escapeHtml(rawSym);
+        const removeBtn =
+          mode === "watchlist"
+            ? `<button type="button" class="wl-remove" data-wl-remove="${escapeHtml(rawSym)}" aria-label="Remove ${sym}">×</button>`
+            : "";
         return `
-          <tr>
-            <td class="ticker">${item.symbol}</td>
-            <td class="price">$${fmtPrice(item.lastPrice)}</td>
-            <td class="change ${cls}">${fmtPct(item.pctChange)}</td>
+          <tr class="${trClass}" data-symbol="${sym}">
+            <td class="ticker td-ticker" data-label="Ticker">${tickerCellHtml(item, isBenchmark)}${removeBtn}</td>
+            <td class="price" data-label="Price">$${fmtPrice(item.regularMarketPrice)}</td>
+            <td class="change ${cls}" data-label="% Day">${fmtPct(pct)}</td>
+            <td class="td-spark spark-cell" data-label="1D">${sparkSvg(item.sparkline, 104, 36, pct)}</td>
           </tr>
         `;
       }
 
-      async function loadData() {
-        statusEl.textContent = "Loading quotes...";
-        const symbolsParam = encodeURIComponent(top10Symbols.join(","));
-        const url = `/api/stocks?symbols=${symbolsParam}`;
+      function updateSortHeaders() {
+        sortHeaders.forEach((th) => {
+          const key = th.getAttribute("data-sort-key");
+          const ind = th.querySelector(".sort-ind");
+          th.classList.remove("sorted");
+          th.setAttribute("aria-sort", "none");
+          if (!sortState || sortState.key !== key) {
+            ind.textContent = "";
+            return;
+          }
+          th.classList.add("sorted");
+          th.setAttribute("aria-sort", sortState.dir === "asc" ? "ascending" : "descending");
+          ind.textContent = sortState.dir === "asc" ? "↑" : "↓";
+        });
+      }
 
-        const resp = await fetch(url, { cache: "no-store" });
-        if (!resp.ok) {
-          throw new Error(`API request failed (${resp.status})`);
+      function renderTable() {
+        if (mode === "watchlist") {
+          if (leaders.length === 0) {
+            rowsEl.innerHTML =
+              '<tr><td colspan="4" class="empty-cell">No symbols yet. Add up to 10 tickers above. Watchlist is stored only in this browser.</td></tr>';
+            updateSortHeaders();
+            return;
+          }
+          const ordered = sortedLeaders();
+          rowsEl.innerHTML = ordered
+            .map((r) => renderRow(r, { isBenchmark: false }))
+            .join("");
+          updateSortHeaders();
+          return;
         }
 
+        if (!benchmarkRow) {
+          rowsEl.innerHTML = "";
+          return;
+        }
+        const ordered = sortedLeaders();
+        const html = [
+          renderRow(benchmarkRow, { isBenchmark: true }),
+          ...ordered.map((r) => renderRow(r, { isBenchmark: false }))
+        ].join("");
+        rowsEl.innerHTML = html;
+        updateSortHeaders();
+      }
+
+      function setMode(next) {
+        mode = next;
+        const isG = mode === "gainers";
+        const isL = mode === "losers";
+        const isW = mode === "watchlist";
+        btnGainers.classList.toggle("mode-active", isG);
+        btnLosers.classList.toggle("mode-active", isL);
+        btnWatchlist.classList.toggle("mode-active", isW);
+        btnGainers.setAttribute("aria-pressed", isG ? "true" : "false");
+        btnLosers.setAttribute("aria-pressed", isL ? "true" : "false");
+        btnWatchlist.setAttribute("aria-pressed", isW ? "true" : "false");
+        watchlistBar.classList.toggle("hidden", !isW);
+      }
+
+      function applyLeaderboardPayload(payload, targetMode, timeLabel) {
+        benchmarkRow = payload.benchmark;
+        leaders = payload.rows || [];
+        tsEl.textContent = `Last update: ${timeLabel || new Date().toLocaleString()}`;
+        statusEl.textContent = `Showing VOO + ${leaders.length} names. Sort columns or switch views. Auto-refresh every 90s. Click a row for chart.`;
+        renderTable();
+      }
+
+      function restoreLeaderboardFromCache(targetMode) {
+        const c = leaderboardCache[targetMode];
+        if (!c) return false;
+        benchmarkRow = JSON.parse(JSON.stringify(c.benchmark));
+        leaders = JSON.parse(JSON.stringify(c.rows));
+        tsEl.textContent = `Last update: ${c.updatedAt}`;
+        statusEl.textContent = `Showing VOO + ${leaders.length} names (cached for ${targetMode}). Refresh for new data. Auto-refresh every 90s.`;
+        renderTable();
+        return true;
+      }
+
+      async function loadData() {
+        statusEl.textContent = "Loading universe and quotes (may take a few seconds)…";
+        const url = `/api/leaderboard?mode=${encodeURIComponent(mode)}`;
+        const resp = await fetch(url, { cache: "no-store" });
+        if (!resp.ok) {
+          const errBody = await resp.json().catch(() => ({}));
+          throw new Error(errBody.error || `API ${resp.status}`);
+        }
         const payload = await resp.json();
-        const entries = payload?.result ?? [];
+        const updatedAt = new Date().toLocaleString();
+        leaderboardCache[mode] = {
+          benchmark: JSON.parse(JSON.stringify(payload.benchmark)),
+          rows: JSON.parse(JSON.stringify(payload.rows || [])),
+          universeSize: payload.universeSize,
+          updatedAt
+        };
+        applyLeaderboardPayload(payload, mode, updatedAt);
+      }
 
-        const data = entries
-          .map((entry) => {
-            const symbol = entry?.symbol;
-            const lastPrice = Number(entry?.regularMarketPrice);
-            const prevClose = Number(entry?.chartPreviousClose ?? entry?.previousClose);
-            if (!symbol || !Number.isFinite(lastPrice) || !Number.isFinite(prevClose)) {
-              return null;
-            }
-            return {
-              symbol,
-              lastPrice,
-              pctChange: getPctChange(lastPrice, prevClose)
-            };
-          })
-          .filter(Boolean);
-
-        rowsEl.innerHTML = data.map(rowHtml).join("");
+      async function loadWatchlistData() {
+        const syms = loadWatchlistSymbols();
+        benchmarkRow = null;
+        if (syms.length === 0) {
+          leaders = [];
+          tsEl.textContent = `Last update: ${new Date().toLocaleString()}`;
+          statusEl.textContent = "No symbols in watchlist. Add tickers above.";
+          renderTable();
+          return;
+        }
+        statusEl.textContent = "Loading watchlist quotes…";
+        const url = `/api/stocks?symbols=${encodeURIComponent(syms.join(","))}`;
+        const resp = await fetch(url, { cache: "no-store" });
+        if (!resp.ok) {
+          const errBody = await resp.json().catch(() => ({}));
+          throw new Error(errBody.error || `API ${resp.status}`);
+        }
+        const payload = await resp.json();
+        const entries = payload.result || [];
+        const bySym = Object.fromEntries(
+          entries.filter((e) => e && e.symbol).map((e) => [e.symbol, e])
+        );
+        leaders = syms.map((s) => {
+          const r = bySym[s] || {};
+          const prev = r.chartPreviousClose ?? r.previousClose;
+          const pct = getPctChange(r.regularMarketPrice, prev);
+          return {
+            symbol: s,
+            shortName: r.shortName || "",
+            regularMarketPrice: r.regularMarketPrice,
+            chartPreviousClose: r.chartPreviousClose,
+            previousClose: r.previousClose,
+            sparkline: r.sparkline || [],
+            pctChange: pct,
+            session: r.session || {}
+          };
+        });
         tsEl.textContent = `Last update: ${new Date().toLocaleString()}`;
-        statusEl.textContent = `Showing ${data.length} stocks. Auto-refresh every 60 seconds.`;
+        statusEl.textContent = `${leaders.length} symbols. Refresh or edit list above. Auto-refresh every 90s.`;
+        renderTable();
       }
 
       async function refresh() {
         refreshBtn.disabled = true;
         try {
-          await loadData();
+          if (mode === "watchlist") {
+            await loadWatchlistData();
+          } else {
+            await loadData();
+          }
         } catch (err) {
           statusEl.textContent = `Error: ${err.message}`;
         } finally {
@@ -247,9 +914,227 @@
         }
       }
 
+      function addWatchlistSymbol() {
+        const sym = normalizeSymbol(wlInput.value);
+        wlInput.value = "";
+        if (!sym) return;
+        const cur = loadWatchlistSymbols();
+        if (cur.includes(sym)) {
+          statusEl.textContent = `${sym} is already on the watchlist.`;
+          return;
+        }
+        if (cur.length >= MAX_WATCHLIST) {
+          statusEl.textContent = `Watchlist full (${MAX_WATCHLIST}). Remove one with × in the Watchlist table.`;
+          return;
+        }
+        cur.push(sym);
+        saveWatchlistSymbols(cur);
+        if (mode === "watchlist") {
+          sortState = null;
+          refresh();
+        } else {
+          statusEl.textContent = `Added ${sym} to watchlist (${cur.length}/${MAX_WATCHLIST}). Open Watchlist to view.`;
+        }
+      }
+
+      btnGainers.addEventListener("click", () => {
+        if (mode === "gainers") return;
+        setMode("gainers");
+        sortState = null;
+        if (restoreLeaderboardFromCache("gainers")) return;
+        refresh();
+      });
+      btnLosers.addEventListener("click", () => {
+        if (mode === "losers") return;
+        setMode("losers");
+        sortState = null;
+        if (restoreLeaderboardFromCache("losers")) return;
+        refresh();
+      });
+      btnWatchlist.addEventListener("click", () => {
+        if (mode === "watchlist") return;
+        setMode("watchlist");
+        sortState = null;
+        refresh();
+      });
+
+      wlAdd.addEventListener("click", addWatchlistSymbol);
+      wlInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") addWatchlistSymbol();
+      });
+
+      sortHeaders.forEach((th) => {
+        th.addEventListener("click", () => {
+          const key = th.getAttribute("data-sort-key");
+          if (!key) return;
+          if (!sortState || sortState.key !== key) {
+            sortState = { key, dir: key === "symbol" ? "asc" : "desc" };
+          } else {
+            sortState = { key, dir: sortState.dir === "asc" ? "desc" : "asc" };
+          }
+          renderTable();
+        });
+      });
+
+      function openDetail(symbol) {
+        detailSymbol = symbol;
+        detailRange = "5d";
+        document.querySelectorAll(".detail-ranges button").forEach((b) => {
+          b.classList.toggle("range-active", b.getAttribute("data-range") === "5d");
+        });
+        detailTitle.textContent = symbol;
+        detailSub.textContent = "";
+        detailLoading.hidden = false;
+        detailErr.hidden = true;
+        detailErr.textContent = "";
+        detailSvg.hidden = true;
+        detailStats.innerHTML = "";
+        detailBackdrop.classList.add("open");
+        detailPanel.classList.add("open");
+        document.body.classList.add("detail-open");
+        fetchDetailChart(symbol, "5d");
+      }
+
+      function closeDetail() {
+        detailBackdrop.classList.remove("open");
+        detailPanel.classList.remove("open");
+        document.body.classList.remove("detail-open");
+      }
+
+      function drawDetailChart(series, pctHint) {
+        detailSvg.innerHTML = "";
+        if (!series || series.length < 2) {
+          detailSvg.hidden = true;
+          return;
+        }
+        const closes = series.map((p) => p.c);
+        const min = Math.min(...closes);
+        const max = Math.max(...closes);
+        const pad = 8;
+        const W = 360;
+        const H = 200;
+        const rw = W - 2 * pad;
+        const rh = H - 2 * pad;
+        const range = max - min || 1;
+        const stroke =
+          pctHint > 0 ? "#30d158" : pctHint < 0 ? "#ff453a" : "#888888";
+        const pts = closes
+          .map((y, i) => {
+            const x = pad + (i / (closes.length - 1)) * rw;
+            const py = pad + (1 - (y - min) / range) * rh;
+            return `${x.toFixed(1)},${py.toFixed(1)}`;
+          })
+          .join(" ");
+        const poly = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+        poly.setAttribute("fill", "none");
+        poly.setAttribute("stroke", stroke);
+        poly.setAttribute("stroke-width", "2");
+        poly.setAttribute("points", pts);
+        detailSvg.appendChild(poly);
+        detailSvg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+        detailSvg.hidden = false;
+      }
+
+      async function fetchDetailChart(symbol, range) {
+        detailLoading.hidden = false;
+        detailErr.hidden = true;
+        detailSvg.hidden = true;
+        try {
+          const url = `/api/quote-detail?symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(range)}`;
+          const resp = await fetch(url, { cache: "no-store" });
+          const body = await resp.json().catch(() => ({}));
+          if (!resp.ok) throw new Error(body.error || `HTTP ${resp.status}`);
+          detailRange = range;
+          const meta = body.meta || {};
+          const name = meta.shortName || "";
+          detailTitle.textContent = name ? `${body.symbol} — ${name}` : body.symbol;
+          const sess = meta.session || {};
+          detailSub.textContent = [
+            sessionLabelText(sess),
+            meta.currency || "",
+            formatQuoteTime(sess) ? `Updated ${formatQuoteTime(sess)}` : ""
+          ]
+            .filter(Boolean)
+            .join(" · ");
+
+          const last = meta.regularMarketPrice;
+          const prev = meta.previousClose;
+          const pct =
+            Number.isFinite(Number(last)) && Number.isFinite(Number(prev)) && Number(prev) !== 0
+              ? ((Number(last) - Number(prev)) / Number(prev)) * 100
+              : 0;
+
+          const ser = body.series || [];
+          if (ser.length < 2) {
+            detailErr.hidden = false;
+            detailErr.textContent = "Not enough chart data for this range.";
+            detailSvg.hidden = true;
+          } else {
+            detailErr.hidden = true;
+            drawDetailChart(ser, pct);
+          }
+
+          detailStats.innerHTML = [
+            `<div>Last <span class="val">${last != null ? fmtPrice(last) : "—"}</span></div>`,
+            `<div>Prev close <span class="val">${prev != null ? fmtPrice(prev) : "—"}</span></div>`,
+            `<div>52W high <span class="val">${meta.fiftyTwoWeekHigh != null ? fmtPrice(meta.fiftyTwoWeekHigh) : "—"}</span></div>`,
+            `<div>52W low <span class="val">${meta.fiftyTwoWeekLow != null ? fmtPrice(meta.fiftyTwoWeekLow) : "—"}</span></div>`
+          ].join("");
+          detailLoading.hidden = true;
+        } catch (e) {
+          detailLoading.hidden = true;
+          detailErr.hidden = false;
+          detailErr.textContent = String(e.message || e);
+        }
+      }
+
+      detailClose.addEventListener("click", closeDetail);
+      detailBackdrop.addEventListener("click", closeDetail);
+
+      document.querySelectorAll(".detail-ranges button").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const r = btn.getAttribute("data-range") || "5d";
+          document.querySelectorAll(".detail-ranges button").forEach((b) => {
+            b.classList.toggle("range-active", b.getAttribute("data-range") === r);
+          });
+          if (detailSymbol) fetchDetailChart(detailSymbol, r);
+        });
+      });
+
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && detailPanel.classList.contains("open")) {
+          closeDetail();
+        }
+      });
+
+      function removeWatchlistSymbol(symRaw) {
+        const sym = normalizeSymbol(symRaw);
+        const cur = loadWatchlistSymbols().filter((s) => s !== sym);
+        saveWatchlistSymbols(cur);
+        if (mode === "watchlist") {
+          sortState = null;
+          refresh();
+        }
+      }
+
+      rowsEl.addEventListener("click", (e) => {
+        const rm = e.target.closest("[data-wl-remove]");
+        if (rm) {
+          e.preventDefault();
+          e.stopPropagation();
+          removeWatchlistSymbol(rm.getAttribute("data-wl-remove") || "");
+          return;
+        }
+        const tr = e.target.closest("tr[data-symbol]");
+        if (!tr) return;
+        const sym = tr.getAttribute("data-symbol");
+        if (sym) openDetail(sym);
+      });
+
       refreshBtn.addEventListener("click", refresh);
+      setMode("gainers");
       refresh();
-      setInterval(refresh, 60000);
+      setInterval(refresh, 90000);
     </script>
   </body>
 </html>
