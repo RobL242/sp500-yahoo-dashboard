@@ -6,6 +6,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import os
 import random
 import re
 import time
@@ -15,9 +16,10 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse, quote
 from urllib.request import Request, urlopen
 
-HOST = "127.0.0.1"
-PORT = 8000
+# Render and other hosts set PORT; listen on all interfaces so the proxy can reach the app.
 BASE_DIR = Path(__file__).resolve().parent
+HOST = os.environ.get("HOST", "0.0.0.0")
+PORT = int(os.environ.get("PORT", "8000"))
 
 BENCHMARK_SYMBOL = "VOO"
 SP500_CSV_URLS = (
