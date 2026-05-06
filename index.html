@@ -675,17 +675,99 @@
 
       @media (max-width: 639px) {
         table {
-          min-width: 480px;
+          min-width: 0;
+          width: 100%;
+          table-layout: fixed;
         }
 
         thead th,
         tbody td {
-          padding-left: 10px;
-          padding-right: 10px;
+          padding: 8px 6px;
+        }
+
+        thead th {
+          font-size: 0.68rem;
+        }
+
+        tbody td {
+          font-size: 0.9rem;
+        }
+
+        thead th:first-child,
+        tbody td.td-ticker {
+          width: 38%;
+          min-width: 0;
+        }
+
+        thead th:nth-child(2),
+        tbody td.price {
+          width: 28%;
+          min-width: 0;
+          white-space: nowrap;
+          font-size: 0.86rem;
+        }
+
+        thead th.td-spark,
+        tbody td.td-spark {
+          width: 34%;
+          min-width: 0;
+          padding-left: 4px;
+        }
+
+        .td-ticker {
+          max-width: none;
+        }
+
+        .co-name {
+          font-size: 0.78rem;
+        }
+
+        .spark-wrap {
+          width: 100%;
+          max-width: 100px;
+          margin-left: auto;
+        }
+
+        .spark-wrap .spark {
+          width: 100%;
+          max-width: 100px;
+          height: auto;
+        }
+
+        .spark-badge {
+          font-size: 0.65rem;
+          font-weight: 800;
+          padding: 2px 5px;
+          top: -2px;
         }
 
         .detail-panel {
           max-width: none;
+        }
+      }
+
+      @media (max-width: 639px) and (orientation: portrait) {
+        thead th:first-child,
+        tbody td.td-ticker {
+          width: 36%;
+        }
+
+        thead th:nth-child(2),
+        tbody td.price {
+          width: 30%;
+        }
+
+        thead th.td-spark,
+        tbody td.td-spark {
+          width: 34%;
+        }
+
+        .spark-wrap {
+          max-width: 92px;
+        }
+
+        .spark-wrap .spark {
+          max-width: 92px;
         }
       }
     </style>
