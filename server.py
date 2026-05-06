@@ -10,8 +10,10 @@ import os
 import random
 import re
 import time
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from typing import TypeVar
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs, urlparse, quote
 from urllib.request import Request, urlopen
@@ -36,7 +38,56 @@ SPARK_MAX_POINTS = 80
 SPARK_RANGE = "1d"
 SPARK_INTERVAL = "1m"
 
+# Reuse merged Yahoo rows for gainers/losers within this window (aligned with UI auto-refresh).
+LEADERBOARD_SNAPSHOT_TTL_SEC = 75.0
+
+_YAHOO_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+
 _sp500_cache: list[str] | None = None
+_leaderboard_snapshot: dict | None = None
+
+T = TypeVar("T")
+
+
+class YahooRetry(Exception):
+    """Logical failure after HTTP OK + JSON parse; retry same URL."""
+
+
+def _retry_backoff_sleep(attempt: int) -> None:
+    if attempt <= 0:
+        return
+    base = min(2.0 ** (attempt - 1), SPARK_RETRY_BACKOFF_CAP_SEC)
+    jitter = random.uniform(0.05, 0.35)
+    time.sleep(base + jitter)
+
+
+def _yahoo_json_with_retries(url: str, timeout: float, extract: Callable[[dict], T]) -> T:
+    last_err: Exception | None = None
+    for attempt in range(SPARK_MAX_RETRIES):
+        _retry_backoff_sleep(attempt)
+        req = Request(url, headers={"User-Agent": _YAHOO_UA})
+        try:
+            with urlopen(req, timeout=timeout) as resp:
+                raw = resp.read().decode("utf-8")
+        except HTTPError as exc:
+            last_err = exc
+            if exc.code in (429, 408, 500, 502, 503, 504):
+                continue
+            raise
+        except URLError as exc:
+            last_err = exc
+            continue
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            last_err = exc
+            continue
+        try:
+            return extract(payload)
+        except YahooRetry as exc:
+            last_err = exc.__cause__ or exc
+            continue
+    raise RuntimeError(f"Yahoo request failed after {SPARK_MAX_RETRIES} tries: {last_err}")
 
 
 def to_yahoo_symbol(raw: str) -> str:
@@ -155,6 +206,25 @@ def _parse_spark_payload(payload: dict) -> list[dict]:
     return rows
 
 
+def _spark_extract(payload: dict) -> list[dict]:
+    fin_err = payload.get("finance", {}).get("error")
+    if fin_err:
+        desc = str(fin_err.get("description") or fin_err)
+        code = str(fin_err.get("code") or "").lower()
+        err = RuntimeError(desc)
+        if (
+            "unable to access" in desc.lower()
+            or "too many" in desc.lower()
+            or "rate" in desc.lower()
+            or code == "unauthorized"
+        ):
+            raise YahooRetry() from err
+        raise err
+    if not payload.get("spark"):
+        raise YahooRetry() from RuntimeError("Yahoo returned empty spark payload")
+    return _parse_spark_payload(payload)
+
+
 def fetch_yahoo_spark(symbols: list[str]) -> list[dict]:
     """One Yahoo spark request with retries for rate limits and transient errors."""
     if not symbols:
@@ -164,55 +234,10 @@ def fetch_yahoo_spark(symbols: list[str]) -> list[dict]:
         f"?symbols={quote(','.join(symbols), safe=',')}"
         f"&range={SPARK_RANGE}&interval={SPARK_INTERVAL}"
     )
-    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
-
-    last_err: Exception | None = None
-    for attempt in range(SPARK_MAX_RETRIES):
-        if attempt:
-            base = min(2.0 ** (attempt - 1), SPARK_RETRY_BACKOFF_CAP_SEC)
-            jitter = random.uniform(0.05, 0.35)
-            time.sleep(base + jitter)
-
-        req = Request(yahoo_url, headers=headers)
-        try:
-            with urlopen(req, timeout=35) as resp:
-                raw = resp.read().decode("utf-8")
-        except HTTPError as exc:
-            last_err = exc
-            if exc.code in (429, 408, 500, 502, 503, 504):
-                continue
-            raise
-        except URLError as exc:
-            last_err = exc
-            continue
-
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            last_err = exc
-            continue
-
-        fin_err = payload.get("finance", {}).get("error")
-        if fin_err:
-            desc = str(fin_err.get("description") or fin_err)
-            code = str(fin_err.get("code") or "").lower()
-            last_err = RuntimeError(desc)
-            if (
-                "unable to access" in desc.lower()
-                or "too many" in desc.lower()
-                or "rate" in desc.lower()
-                or code == "unauthorized"
-            ):
-                continue
-            raise last_err
-
-        if not payload.get("spark"):
-            last_err = RuntimeError("Yahoo returned empty spark payload")
-            continue
-
-        return _parse_spark_payload(payload)
-
-    raise RuntimeError(f"Yahoo spark failed after {SPARK_MAX_RETRIES} tries: {last_err}")
+    try:
+        return _yahoo_json_with_retries(yahoo_url, 35.0, _spark_extract)
+    except RuntimeError as exc:
+        raise RuntimeError(f"Yahoo spark failed: {exc}") from exc
 
 
 def fetch_yahoo_spark_split_fallback(symbols: list[str]) -> list[dict]:
@@ -278,43 +303,17 @@ def fetch_yahoo_chart(symbol: str, range_key: str) -> dict:
         "https://query1.finance.yahoo.com/v8/finance/chart/"
         f"{quote(sym, safe='')}?range={rng}&interval={interval}"
     )
-    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 
-    last_err: Exception | None = None
-    for attempt in range(SPARK_MAX_RETRIES):
-        if attempt:
-            base = min(2.0 ** (attempt - 1), SPARK_RETRY_BACKOFF_CAP_SEC)
-            jitter = random.uniform(0.05, 0.35)
-            time.sleep(base + jitter)
-
-        req = Request(url, headers=headers)
-        try:
-            with urlopen(req, timeout=40) as resp:
-                raw = resp.read().decode("utf-8")
-        except HTTPError as exc:
-            last_err = exc
-            if exc.code in (429, 408, 500, 502, 503, 504):
-                continue
-            raise
-        except URLError as exc:
-            last_err = exc
-            continue
-
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            last_err = exc
-            continue
-
+    def extract(data: dict) -> dict:
         chart = data.get("chart") or {}
         results = chart.get("result") or []
         if not results:
             err = chart.get("error") or {}
             desc = err.get("description") or "Empty chart result"
-            last_err = RuntimeError(str(desc))
+            rexc = RuntimeError(str(desc))
             if "rate" in str(desc).lower() or "too many" in str(desc).lower():
-                continue
-            raise last_err
+                raise YahooRetry() from rexc
+            raise rexc
 
         res = results[0]
         meta = res.get("meta") or {}
@@ -359,7 +358,93 @@ def fetch_yahoo_chart(symbol: str, range_key: str) -> dict:
             "meta": detail_meta,
         }
 
-    raise RuntimeError(f"Yahoo chart failed after {SPARK_MAX_RETRIES} tries: {last_err}")
+    try:
+        return _yahoo_json_with_retries(url, 40.0, extract)
+    except RuntimeError as exc:
+        raise RuntimeError(f"Yahoo chart failed: {exc}") from exc
+
+
+def _fetch_merged_sparks(all_for_spark: list[str]) -> dict[str, dict]:
+    merged: dict[str, dict] = {}
+    for i, batch in enumerate(batched(all_for_spark, SPARK_BATCH_SIZE)):
+        if i:
+            time.sleep(SPARK_BATCH_DELAY_SEC)
+        chunk = fetch_yahoo_spark_split_fallback(batch)
+        for row in chunk:
+            sym = row.get("symbol")
+            if sym:
+                merged[sym] = row
+    return merged
+
+
+def _leader_row(sym: str, row: dict, p: float) -> dict:
+    return {
+        "symbol": sym,
+        "shortName": row.get("shortName") or "",
+        "regularMarketPrice": row["regularMarketPrice"],
+        "chartPreviousClose": row.get("chartPreviousClose"),
+        "previousClose": row.get("previousClose"),
+        "sparkline": row.get("sparkline") or [],
+        "pctChange": round(p, 6),
+        "session": row.get("session") or _session_from_meta({}),
+    }
+
+
+def _benchmark_row(bench: dict, bench_pct: float) -> dict:
+    return {
+        "symbol": BENCHMARK_SYMBOL,
+        "shortName": bench.get("shortName") or "",
+        "regularMarketPrice": bench["regularMarketPrice"],
+        "chartPreviousClose": bench.get("chartPreviousClose"),
+        "previousClose": bench.get("previousClose"),
+        "sparkline": bench.get("sparkline") or [],
+        "pctChange": round(bench_pct, 6),
+        "isBenchmark": True,
+        "session": bench.get("session") or _session_from_meta({}),
+    }
+
+
+def _leaderboard_payload(mode: str, sp500: list[str], merged: dict[str, dict]) -> dict:
+    """Build API JSON for one request. Always includes gainers + losers top-10 so the client can cache both without a second round trip."""
+    rank_set = list(dict.fromkeys(sp500))
+    if BENCHMARK_SYMBOL in rank_set:
+        rank_set.remove(BENCHMARK_SYMBOL)
+
+    bench = merged.get(BENCHMARK_SYMBOL)
+    if not bench:
+        raise RuntimeError(f"Benchmark {BENCHMARK_SYMBOL} not returned by Yahoo")
+
+    bench_pct = pct_change(bench)
+    if bench_pct is None:
+        raise RuntimeError("Could not compute benchmark % change")
+
+    candidates: list[tuple[float, dict]] = []
+    for sym in rank_set:
+        row = merged.get(sym)
+        if not row:
+            continue
+        p = pct_change(row)
+        if p is None:
+            continue
+        candidates.append((p, _leader_row(sym, row, p)))
+
+    sorted_asc = sorted(candidates, key=lambda t: t[0])
+    top_losers = [t[1] for t in sorted_asc[:10]]
+    top_gainers = [t[1] for t in reversed(sorted_asc[-10:])]
+
+    benchmark_out = _benchmark_row(bench, bench_pct)
+    rows = top_gainers if mode == "gainers" else top_losers
+
+    return {
+        "mode": mode,
+        "benchmark": benchmark_out,
+        "rows": rows,
+        "topGainers": top_gainers,
+        "topLosers": top_losers,
+        "gainers": {"rows": top_gainers},
+        "losers": {"rows": top_losers},
+        "universeSize": len(sp500),
+    }
 
 
 class AppHandler(BaseHTTPRequestHandler):
@@ -392,6 +477,7 @@ class AppHandler(BaseHTTPRequestHandler):
             return
 
         if parsed.path == "/api/leaderboard":
+            global _leaderboard_snapshot
             query = parse_qs(parsed.query)
             mode = (query.get("mode", ["gainers"])[0] or "gainers").lower()
             if mode not in ("gainers", "losers"):
@@ -404,81 +490,41 @@ class AppHandler(BaseHTTPRequestHandler):
                 self._send_json(502, {"error": f"S&P 500 list failed: {exc}"})
                 return
 
-            # Full universe for ranking; benchmark fetched alongside
-            rank_set = list(dict.fromkeys(sp500))
-            if BENCHMARK_SYMBOL in rank_set:
-                rank_set.remove(BENCHMARK_SYMBOL)
+            symbols_tuple = tuple(sp500)
+            now_m = time.monotonic()
+            merged: dict[str, dict] | None = None
+            snap = _leaderboard_snapshot
+            if snap is not None:
+                if (
+                    now_m - snap["fetched_at"] < LEADERBOARD_SNAPSHOT_TTL_SEC
+                    and snap["symbols_tuple"] == symbols_tuple
+                    and BENCHMARK_SYMBOL in snap["merged"]
+                ):
+                    merged = snap["merged"]
 
-            all_for_spark = list(dict.fromkeys([BENCHMARK_SYMBOL, *rank_set]))
-            merged: dict[str, dict] = {}
-            for i, batch in enumerate(batched(all_for_spark, SPARK_BATCH_SIZE)):
-                if i:
-                    time.sleep(SPARK_BATCH_DELAY_SEC)
+            if merged is None:
+                rank_set = list(dict.fromkeys(sp500))
+                if BENCHMARK_SYMBOL in rank_set:
+                    rank_set.remove(BENCHMARK_SYMBOL)
+                all_for_spark = list(dict.fromkeys([BENCHMARK_SYMBOL, *rank_set]))
                 try:
-                    chunk = fetch_yahoo_spark_split_fallback(batch)
+                    merged = _fetch_merged_sparks(all_for_spark)
                 except Exception as exc:
                     self._send_json(502, {"error": f"Yahoo fetch failed: {exc}"})
                     return
-                for row in chunk:
-                    sym = row.get("symbol")
-                    if sym:
-                        merged[sym] = row
-
-            bench = merged.get(BENCHMARK_SYMBOL)
-            if not bench:
-                self._send_json(502, {"error": f"Benchmark {BENCHMARK_SYMBOL} not returned by Yahoo"})
-                return
-
-            bench_pct = pct_change(bench)
-            if bench_pct is None:
-                self._send_json(502, {"error": "Could not compute benchmark % change"})
-                return
-
-            candidates: list[tuple[float, dict]] = []
-            for sym in rank_set:
-                row = merged.get(sym)
-                if not row:
-                    continue
-                p = pct_change(row)
-                if p is None:
-                    continue
-                row_out = {
-                    "symbol": sym,
-                    "shortName": row.get("shortName") or "",
-                    "regularMarketPrice": row["regularMarketPrice"],
-                    "chartPreviousClose": row.get("chartPreviousClose"),
-                    "previousClose": row.get("previousClose"),
-                    "sparkline": row.get("sparkline") or [],
-                    "pctChange": round(p, 6),
-                    "session": row.get("session") or _session_from_meta({}),
+                _leaderboard_snapshot = {
+                    "merged": merged,
+                    "symbols_tuple": symbols_tuple,
+                    "fetched_at": time.monotonic(),
                 }
-                candidates.append((p, row_out))
 
-            reverse = mode == "gainers"
-            candidates.sort(key=lambda t: t[0], reverse=reverse)
-            top = [t[1] for t in candidates[:10]]
+            try:
+                payload = _leaderboard_payload(mode, sp500, merged)
+            except RuntimeError as exc:
+                self._send_json(502, {"error": str(exc)})
+                return
 
-            benchmark_out = {
-                "symbol": BENCHMARK_SYMBOL,
-                "shortName": bench.get("shortName") or "",
-                "regularMarketPrice": bench["regularMarketPrice"],
-                "chartPreviousClose": bench.get("chartPreviousClose"),
-                "previousClose": bench.get("previousClose"),
-                "sparkline": bench.get("sparkline") or [],
-                "pctChange": round(bench_pct, 6),
-                "isBenchmark": True,
-                "session": bench.get("session") or _session_from_meta({}),
-            }
-
-            self._send_json(
-                200,
-                {
-                    "mode": mode,
-                    "benchmark": benchmark_out,
-                    "rows": top,
-                    "universeSize": len(sp500),
-                },
-            )
+            self._send_json(200, payload)
             return
 
         if parsed.path == "/api/quote-detail":
